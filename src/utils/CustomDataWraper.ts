@@ -283,7 +283,6 @@ export default class CustomDataWrapper {
   }
 
   public readBytes(bytes: ByteArray, offset?: number, length?: number) {
-    // this._data.readBytes(bytes, offset, length);
     this._data.readBytes(bytes, offset, length);
   }
 

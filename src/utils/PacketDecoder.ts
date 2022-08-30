@@ -89,14 +89,6 @@ export default class PacketDecoder {
             (ba.readByte() & 255);
         }
 
-        // console.log("length | available | packetId");
-        // console.log(
-        //   length +
-        //     " | " +
-        //     ba.bytesAvailable +
-        //     " | " +
-        //     msg_from_id[packetId]?.name
-        // );
         if (msg_from_id[packetId] === undefined) return;
         if (length > ba.bytesAvailable) {
           PacketDecoder.splitPacket = true;
@@ -128,18 +120,10 @@ export default class PacketDecoder {
 
     const consumed = packetContent.getPosition() - initialPos;
     if (length - consumed !== 0) {
-      console.log("warning: forced to trim a packet !");
+      console.log("warning: forced to trim a packet ! ");
       packetContent.setPosition(initialPos + length);
     }
 
-    // console.log({
-    //   source: port === 443 || port === 5555 ? "Server" : "Client",
-    //   time: PacketDecoder.formatTimestamp(),
-    //   id: packetId,
-    //   name: msg_from_id[packetId]?.name || "Unknown",
-    //   raw: packetContent._data.toJSON(),
-    //   body: messageObject,
-    // });
     this.packetQueue.push({
       source: port === 443 || port === 5555 ? "Server" : "Client",
       time: PacketDecoder.formatTimestamp(),

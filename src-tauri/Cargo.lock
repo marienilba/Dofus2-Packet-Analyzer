@@ -3099,6 +3099,7 @@ dependencies = [
 name = "tauri-app"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "bytebuffer",
  "byteorder 1.4.3",
  "dns-parser",

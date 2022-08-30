@@ -3,12 +3,9 @@ import {
   types,
   types_from_id,
   primitives,
-} from "./network-messages/2.63/messages";
-import CustomDataWrapper from "./CustomDataWraper";
+} from "../utils/network-messages/2.63/protocol.json";
+import type CustomDataWrapper from "./CustomDataWraper";
 import BooleanByteWrapper from "./BooleanByteWrapper";
-// @ts-ignore
-import { Buffer } from "buffer";
-import { ByteArray } from "./bytearray";
 
 interface Anything {
   [key: string]: Message;
@@ -29,24 +26,13 @@ export type variable = {
   type: string;
   optional: boolean;
 };
-
-export const PacketToObject = (data: CustomDataWrapper, packet_id: number) => {
-  const msg = msg_from_id[packet_id];
-  if (!msg) {
-    console.log("Unvalid packet id, none message found");
-    return;
-  }
-  return deserialize(data, msg.name);
-};
-
 export const getMsgFromId = msg_from_id as unknown as Anything;
 export const getTypesFromName = types as unknown as Anything;
 export const getTypeFromId = types_from_id as unknown as Anything;
 export const getPrimitives = primitives as string[];
 
 export function readAtomicType(data: CustomDataWrapper, desc: variable): {} {
-  if (desc.optional) {
-  }
+  if (desc.optional) console.log("optional !!");
   let result = {};
   try {
     if (desc.length) {
@@ -63,7 +49,7 @@ export function readAtomicType(data: CustomDataWrapper, desc: variable): {} {
       result = data.read(desc.type);
     }
   } catch (ex) {
-    console.log("error!", ex);
+    console.trace(ex, desc);
     return "ERROR";
   }
 
@@ -71,6 +57,9 @@ export function readAtomicType(data: CustomDataWrapper, desc: variable): {} {
 }
 
 export function deserialize(data: CustomDataWrapper, typeName: string): {} {
+  if (!data || !typeName) {
+    throw new Error("args missing ! data:" + data + " typeName:" + typeName);
+  }
   let result = {};
   let msgSpec = getTypesFromName[typeName];
 
@@ -106,41 +95,36 @@ export function deserialize(data: CustomDataWrapper, typeName: string): {} {
     } else {
       if (v.length == null) {
         let type = v.type;
-
         if (type == "ID") {
           let id = data.readUnsignedShort();
           type = getTypeFromId[id]?.name;
+          if (type === undefined) {
+          }
         }
-        if (type) {
-          const r = deserialize(data, type);
-          result = { ...result, ...r };
-        }
+        result = { ...result, ...deserialize(data, type) };
       } else {
         const length = data.read(v.length);
         const res = [];
+        console.log("len:", length);
         for (let i = 0; i < length; i++) {
           let type = v.type;
-
-          if (type === "ID") {
+          if (type == "ID") {
             let id = data.readUnsignedShort();
-
-            type = types_from_id[id]?.name;
-            // if (!type) console.log(id);
+            type = getTypeFromId[id]?.name;
+            console.log(type);
+            if (type === undefined) {
+              console.log(v, id, res);
+            }
           }
-          if (type) {
-            const r = deserialize(data, type);
-            console.log(r);
-            res.push(r);
-          }
+          res.push(deserialize(data, type));
         }
         result = { ...result, [v.name]: res };
       }
     }
   });
+  //console.log("Done deserializing " + msgSpec.name + "\n", result)
   return result;
 }
-
-// OSEF v
 
 export function writeAtomicType(
   data: CustomDataWrapper,
@@ -161,10 +145,12 @@ export function writeAtomicType(
 }
 
 export function serialize(
-  dataWrapper: CustomDataWrapper = new CustomDataWrapper(new ByteArray()),
+  dataWrapper: CustomDataWrapper,
   data: any,
   typeName: string
 ): Buffer {
+  //console.log("serializing " + msgSpec.name + "\n")
+
   if (!typeName || !data) {
     throw new Error("missing arg data: " + data + " typeName:" + typeName);
   }
@@ -200,8 +186,7 @@ export function serialize(
       writeAtomicType(dataWrapper, data[desc.name], desc);
     } else {
       if (desc.length == null) {
-        if (!data[desc.name]) {
-        }
+        if (!data[desc.name]) console.log(data, desc.name);
         serialize(dataWrapper, data[desc.name], desc.type);
       } else {
         dataWrapper.write(desc.length, data[desc.name].length);

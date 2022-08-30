@@ -1,10 +1,31 @@
 #![allow(dead_code, unused_variables, non_snake_case)]
 // use std::any::Any;
 
+use anyhow::Result;
 use bytebuffer::ByteBuffer;
 use serde_json::{Map, Value};
 
 use std::{cmp::min, collections::HashMap, fs};
+
+pub const PRIMITIVES: [&str; 17] = [
+    "Boolean",
+    "Byte",
+    "ByteArray",
+    "Double",
+    "Float",
+    "Int",
+    "Short",
+    "UTF",
+    "UnsignedByte",
+    "UnsignedInt",
+    "UnsignedShort",
+    "VarInt",
+    "VarLong",
+    "VarShort",
+    "VarUhInt",
+    "VarUhLong",
+    "VarUhShort",
+];
 
 trait Buffer {
     fn bytes_available(&self) -> usize {
@@ -205,11 +226,10 @@ impl PacketDecoder {
                 }
 
                 println!(
-                    "length {} | available {} | packetId {} | length_type {}",
+                    "length {} | available {} | packetId {}",
                     length,
                     ba.bytes_available(),
                     packet_id,
-                    length_type,
                 );
 
                 if length > ba.bytes_available() {
@@ -248,8 +268,6 @@ impl PacketDecoder {
                             println!("warning: forced to trim a packet !");
                             ba.set_rpos(min(initial_pos + length, ba.len()));
                         }
-
-                        // self.queue.push(message_object);
                     }
                 }
             }
@@ -265,11 +283,7 @@ impl PacketDecoder {
         types: &Map<String, Value>,
     ) -> Result<DofusPacket, &'static str> {
         let dofus_packet = DofusPacket::new();
-        // println!(
-        //     "Check the total of the packet {} : {}",
-        //     packet_id,
-        //     packet_content.bytes_available()
-        // );
+
         let msg = msg_from_types.get(&packet_id.to_string());
 
         if let Some(message_type) = msg {
@@ -279,13 +293,146 @@ impl PacketDecoder {
                 .expect("Message has no name")
                 .as_str()
                 .unwrap();
-            // println!("Packet name receive: {}", name);
+
+            PacketDecoder::deserialize(packet_content, name, message_type, types);
         } else {
-            return Err("Err");
+            return Err("Error when parsing the ba to object");
         }
 
         Ok(dofus_packet)
     }
 
-    fn deserialize(ba: &mut ByteBuffer, message_type: &Map<String, Value>) {}
+    fn deserialize(
+        ba: &mut ByteBuffer,
+        type_name: &str,
+        message_type: &Map<String, Value>,
+        types_from_name: &Map<String, Value>,
+    ) -> Map<String, Value> {
+        let mut result: Map<String, Value> = Map::new();
+        let msgSpec = types_from_name
+            .get(type_name)
+            .expect(format!("msgSpec missing ! typeName: {}", type_name).as_str())
+            .as_object()
+            .unwrap();
+
+        if let Some(parent) = msgSpec.get("parent") {
+            if let Some(parent_name) = parent.as_str() {
+                let mut res =
+                    PacketDecoder::deserialize(ba, type_name, message_type, types_from_name);
+                result.append(&mut res);
+            } // else means it's Null
+        }
+
+        if let Some(bool_vars) = msgSpec.get("boolVars") {
+            if let Some(bool_vars_arr) = bool_vars.as_array() {
+                for item in bool_vars_arr.iter() {
+                    // let var = item.as_object().unwrap();
+                    // let name = vars.get("name").unwrap().as_str().unwrap();
+                    // let length = vars.get("length").unwrap().as_str().unwrap();
+                    // let var_type = vars.get("type").unwrap().as_str().unwrap();
+                    // let optional = vars.get("optional").unwrap().as_str().unwrap();
+
+                    let box0 = ba.read_u8();
+                    // for (let i = 0; i < 8 && i < msgSpec.boolVars.length / (j + 1); i++) {
+                    //     let bool1 = msgSpec?.boolVars[i];
+                    //     result = {
+                    //       ...result,
+                    //       [bool1.name]: BooleanByteWrapper.getFlag(_box0, i),
+                    //     };
+                    //   }
+                }
+            }
+        }
+
+        if let Some(vars) = msgSpec.get("vars") {
+            if let Some(vars_arr) = vars.as_array() {
+                for item in vars_arr.iter() {
+                    let var = item.as_object().unwrap();
+                    let name = item.get("name").unwrap().as_str().unwrap();
+                    let length = item.get("length").unwrap();
+                    let var_type = item.get("type").unwrap().as_str().unwrap();
+                    let optional = item.get("optional").unwrap().as_bool().unwrap();
+
+                    if PRIMITIVES.contains(&var_type) {
+                        PacketDecoder::read_atomic_types(ba, length, var_type);
+                    } else {
+                        match length {
+                            Value::Null =>
+                            // let type = v.type;
+
+                            // if (type == "ID") {
+                            //   let id = data.readUnsignedShort();
+                            //   type = getTypeFromId[id]?.name;
+                            // }
+                            // if (type) {
+                            //   const r = deserialize(data, type);
+                            //   console.log(r);
+                            //   result = { ...result, ...r };
+                            // }
+                            {
+                                todo!()
+                            }
+
+                            Value::String(_) =>
+                            // const length = data.read(v.length);
+                            // const res = [];
+                            // for (let i = 0; i < length; i++) {
+                            //   let type = v.type;
+
+                            //   if (type === "ID") {
+                            //     let id = data.readUnsignedShort();
+
+                            //     type = types_from_id[id]?.name;
+                            //     // if (!type) console.log(id);
+                            //   }
+                            //   if (type) {
+                            //     const r = deserialize(data, type);
+                            //     console.log(r);
+                            //     res.push(r);
+                            //   }
+                            // }
+                            // result = { ...result, [v.name]: res };
+                            {
+                                todo!()
+                            }
+                            _ => todo!(),
+                        }
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
+    fn read_atomic_types(
+        ba: &mut ByteBuffer,
+        var_length: &Value,
+        var_type: &str,
+    ) -> Map<String, Value> {
+        // if (desc.optional) {
+        // }
+        // let result = {};
+        // try {
+        //   if (desc.length) {
+        //     let length = data.read(desc.length);
+        //     if (typeof length != "number") {
+        //       throw new Error("length not number : " + length);
+        //     }
+        //     let res = [];
+        //     for (let i = 0; i < length; i++) {
+        //       res.push(data.read(desc.type));
+        //     }
+        //     result = res;
+        //   } else {
+        //     result = data.read(desc.type);
+        //   }
+        // } catch (ex) {
+        //   console.log("error!", ex);
+        //   return "ERROR";
+        // }
+
+        // return result;
+        Map::new()
+    }
 }

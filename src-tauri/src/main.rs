@@ -2,6 +2,7 @@
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
+#![allow(unused_imports)]
 
 mod lib;
 
@@ -24,9 +25,9 @@ struct Message {
 }
 
 impl Message {
-    pub fn new(parsed: ParsedPacket, len: usize) -> Message {
+    pub fn new(packet: &[u8], len: usize) -> Message {
         Message {
-            remaining: parsed.remaining,
+            remaining: packet.to_vec(),
             len,
         }
     }
@@ -65,17 +66,17 @@ fn main() {
 
             tauri::async_runtime::spawn(async move {
                 loop {
-                    let mut decoder = PacketDecoder::new();
+                    let mut _decoder = PacketDecoder::new();
                     while let Ok(packet) = cap.next_packet() {
                         // parsed.remaining flush data so we lose the len value for the dofus decoder.
                         // still needed for know if this is client or server
-                        let parsed = PacketCapture::new().get_packet(&packet);
+                        let _parsed = PacketCapture::new().get_packet(&packet);
 
                         // we remove the header from the data, slice at 54
                         let tcp_content = &packet.data[54..];
 
-                        decoder.decode_packet(&tcp_content, 5555);
-                        let message = Message::new(parsed, packet.len());
+                        // decoder.decode_packet(&tcp_content, 5555);
+                        let message = Message::new(tcp_content, packet.len());
                         rs2js(serde_json::to_string(&message).unwrap(), &app_handle);
                     }
                 }
