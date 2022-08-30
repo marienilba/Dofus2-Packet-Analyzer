@@ -1,0 +1,20 @@
+#![allow(dead_code)]
+pub const PRIMITIVES: [&str; 17] = [
+    "Boolean",
+    "Byte",
+    "ByteArray",
+    "Double",
+    "Float",
+    "Int",
+    "Short",
+    "UTF",
+    "UnsignedByte",
+    "UnsignedInt",
+    "UnsignedShort",
+    "VarInt",
+    "VarLong",
+    "VarShort",
+    "VarUhInt",
+    "VarUhLong",
+    "VarUhShort",
+];
