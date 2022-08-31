@@ -229,7 +229,10 @@ impl Buffer for ByteBuffer {
                 // println!("test: {}", test);
                 test.try_into().expect("test failed")
             }),
-            "VarLong" => AtomicType::VarLong(self.read_i64().to_be()),
+            "VarLong" => AtomicType::VarLong({
+                println!("var_long");
+                self.read_i64().to_be()
+            }),
             "VarUhInt" => AtomicType::VarUhInt(self.read_var_uh_int()),
             "VarInt" => AtomicType::VarInt(self.read_var_int()),
             "VarShort" => AtomicType::VarShort(self.read_var_short()),
@@ -546,7 +549,15 @@ impl PacketDecoder {
         if let Some(bool_vars) = msgSpec.get("boolVars") {
             if let Some(bool_vars_arr) = bool_vars.as_array() {
                 if bool_vars_arr.len() > 0 {
-                    let box0 = ba.read_i8();
+                    let mut j = 0;
+                    loop {
+                        j = j + 8;
+                        let box0 = ba.read_i8();
+
+                        if j >= bool_vars_arr.len() {
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -561,6 +572,7 @@ impl PacketDecoder {
                     let optional = item.get("optional").unwrap().as_bool().unwrap();
 
                     if PRIMITIVES.contains(&var_type) {
+                        println!("value: {}", name);
                         let res = PacketDecoder::read_atomic_types(ba, length, var_type);
                         let mut map_res = Map::new();
                         map_res.insert((&name).to_string(), res);
@@ -734,6 +746,6 @@ fn atomic_to_serde_value(atomic: &AtomicType) -> Value {
         AtomicType::VarShort(v) => json!(v),
         AtomicType::VarUhShort(v) => json!(v),
     };
-    // println!("atomic to serde res: {}, type {:?}", res, atomic);
+    println!("atomic to serde res: {}, type {:?}", res, atomic);
     res
 }
