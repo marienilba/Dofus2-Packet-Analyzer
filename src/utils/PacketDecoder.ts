@@ -30,9 +30,9 @@ export default class PacketDecoder {
     const ba = new CustomDataWrapper(new ByteArray(tcpContent));
     while (ba.bytesAvailable > 0) {
       if (PacketDecoder.splitPacket) {
-        console.log(
-          `We're split, at ${PacketDecoder.sba.length} + ${ba._data.bytesAvailable}, looking for ${PacketDecoder.splitPacketLength}`
-        );
+        // console.log(
+        //   `We're split, at ${PacketDecoder.sba.length} + ${ba._data.bytesAvailable}, looking for ${PacketDecoder.splitPacketLength}`
+        // );
 
         if (
           PacketDecoder.sba.length + ba._data.bytesAvailable <
