@@ -32,7 +32,6 @@ impl Message {
         }
     }
 }
-
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -66,7 +65,7 @@ fn main() {
 
             tauri::async_runtime::spawn(async move {
                 loop {
-                    let mut _decoder = PacketDecoder::new();
+                    let mut decoder = PacketDecoder::new();
                     while let Ok(packet) = cap.next_packet() {
                         // parsed.remaining flush data so we lose the len value for the dofus decoder.
                         // still needed for know if this is client or server
@@ -75,7 +74,7 @@ fn main() {
                         // we remove the header from the data, slice at 54
                         let tcp_content = &packet.data[54..];
 
-                        // decoder.decode_packet(&tcp_content, 5555);
+                        decoder.decode_packet(&tcp_content, 5555);
                         let message = Message::new(tcp_content, packet.len());
                         rs2js(serde_json::to_string(&message).unwrap(), &app_handle);
                     }
