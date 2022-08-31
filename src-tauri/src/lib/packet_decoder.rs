@@ -550,10 +550,32 @@ impl PacketDecoder {
             if let Some(bool_vars_arr) = bool_vars.as_array() {
                 if bool_vars_arr.len() > 0 {
                     let mut j = 0;
-                    loop {
-                        j = j + 8;
-                        let box0 = ba.read_i8();
 
+                    loop {
+                        let box0: i16 = ba.read_i8().try_into().expect("box0 to i16 failed");
+
+                        let mut i = 0;
+                        while i < 8 && i < bool_vars_arr.len() / (j + 1) {
+                            let bool_obj = bool_vars_arr
+                                .get(i)
+                                .expect("bool obj")
+                                .as_object()
+                                .expect("to be an object");
+
+                            let bool_name = bool_obj
+                                .get("name")
+                                .expect("bool obj has name prop")
+                                .as_str()
+                                .unwrap();
+
+                            let res = getFlagBooleanByte(&box0, i);
+
+                            result.insert((&bool_name).to_string(), Value::Bool(res));
+
+                            i = i + 1;
+                        }
+
+                        j = j + 8;
                         if j >= bool_vars_arr.len() {
                             break;
                         }
@@ -572,7 +594,7 @@ impl PacketDecoder {
                     let optional = item.get("optional").unwrap().as_bool().unwrap();
 
                     if PRIMITIVES.contains(&var_type) {
-                        println!("value: {}", name);
+                        // println!("value: {}", name);
                         let res = PacketDecoder::read_atomic_types(ba, length, var_type);
                         let mut map_res = Map::new();
                         map_res.insert((&name).to_string(), res);
@@ -746,6 +768,22 @@ fn atomic_to_serde_value(atomic: &AtomicType) -> Value {
         AtomicType::VarShort(v) => json!(v),
         AtomicType::VarUhShort(v) => json!(v),
     };
-    println!("atomic to serde res: {}, type {:?}", res, atomic);
+    // println!("atomic to serde res: {}, type {:?}", res, atomic);
     res
+}
+
+fn getFlagBooleanByte(a: &i16, pos: usize) -> bool {
+    let b = false;
+    match pos {
+        0 => (a & 1) != 0,
+        1 => (a & 2) != 0,
+        2 => (a & 4) != 0,
+        3 => (a & 8) != 0,
+        4 => (a & 16) != 0,
+        5 => (a & 32) != 0,
+        6 => (a & 64) != 0,
+        7 => (a & 128) != 0,
+        _ => false,
+    };
+    b
 }
