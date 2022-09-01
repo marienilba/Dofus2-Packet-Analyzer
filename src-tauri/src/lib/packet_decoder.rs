@@ -124,11 +124,13 @@ impl Buffer for ByteBuffer {
 
         const MASK_01111111: isize = 127;
 
+        const SHORT_SIZE: isize = 16;
+
         let mut b: isize;
         let mut value: isize = 0;
         let mut offset: isize = 0;
         let mut has_next: bool;
-        while offset < 16 {
+        while offset < SHORT_SIZE {
             b = self.read_i8() as isize;
             has_next = (b & MASK_10000000) == MASK_10000000;
             if offset > 0 {
@@ -597,7 +599,27 @@ impl PacketDecoder {
                     let name = var.get("name").unwrap().as_str().unwrap();
                     let length = var.get("length").unwrap();
                     let var_type = var.get("type").unwrap().as_str().unwrap();
-                    let _optional = var.get("optional").unwrap().as_bool().unwrap();
+                    let optional = var.get("optional").unwrap().as_bool().unwrap();
+                    /*
+                    ArenaRankInfos, have to handle optional
+                    optional work as this ->
+                       if(input.readByte() == 0)
+                        {
+                            this.ranking = null;
+                        }
+                        else
+                        {
+                            this.ranking = new ArenaRanking();
+                            this.ranking.deserialize(input);
+                        }
+                    */
+
+                    if optional == true {
+                        if ba.read_i8() != 0 {
+                            return result;
+                        }
+                    }
+
                     // println!("name {}", name);
                     if PRIMITIVES.contains(&var_type) {
                         // println!("value: {}", name);
