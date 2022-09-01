@@ -222,7 +222,7 @@ impl Buffer for ByteBuffer {
                     .expect("Error in readUTF")
                     .to_string()
             }),
-            "Double" => AtomicType::Double(self.read_f64()),
+            "Double" => AtomicType::Double(self.read_f64().abs()),
             "VarUhLong" => AtomicType::VarUhLong({
                 let var = self.read_uint_64().to_number();
                 var.try_into().expect("test failed")
