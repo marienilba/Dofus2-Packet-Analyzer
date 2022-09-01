@@ -2,6 +2,6 @@
 
 This is only for testing purpose.
 
-![Screenshot](images/logo.png)
+![Screenshot](images/screenshot.png)
 
 - [ ] Filtering in the viewer
