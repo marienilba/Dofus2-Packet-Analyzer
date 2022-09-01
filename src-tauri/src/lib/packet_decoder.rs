@@ -42,11 +42,11 @@ trait Buffer {
     fn bytes_available(&self) -> usize {
         0 as usize
     }
-    fn swap_bytes(&mut self, bytes: &mut ByteBuffer, offset: usize, len: usize) {}
+    fn swap_bytes(&mut self, bytes: &mut ByteBuffer, len: usize) {}
     fn read(&mut self, t: &str) -> AtomicType {
         AtomicType::Boolean(true)
     }
-    fn read_var_int(&mut self) -> i32 {
+    fn read_var_int(&mut self) -> u32 {
         0
     }
     fn read_var_uh_int(&mut self) -> u32 {
@@ -66,7 +66,7 @@ impl Buffer for ByteBuffer {
     fn bytes_available(&self) -> usize {
         return self.len() - self.get_rpos();
     }
-    fn swap_bytes(&mut self, bytes: &mut ByteBuffer, offset: usize, len: usize) {
+    fn swap_bytes(&mut self, bytes: &mut ByteBuffer, len: usize) {
         let mut length = len.clone();
         if length == 0 {
             length = self.bytes_available();
@@ -77,11 +77,11 @@ impl Buffer for ByteBuffer {
             return;
         }
 
-        bytes.write_bytes(&self.read_bytes(self.bytes_available()));
+        bytes.write_bytes(&self.read_bytes(length));
 
         self.set_rpos(min(self.get_rpos() + length, self.len()));
     }
-    fn read_var_int(&mut self) -> i32 {
+    fn read_var_int(&mut self) -> u32 {
         const INT_SIZE: isize = 32;
 
         const UNSIGNED_SHORT_MAX_VALUE: isize = 65536;
@@ -109,6 +109,7 @@ impl Buffer for ByteBuffer {
                 return value.try_into().expect("read_var_int failed to try to i32");
             }
         }
+        println!("Too much data, {}", value);
         value
             .try_into()
             .expect("read_var_int failed to try to i32 - Too much data")
@@ -216,22 +217,19 @@ impl Buffer for ByteBuffer {
             }
             "UTF" => AtomicType::UTF({
                 let n_of_bytes = self.read_u16();
-                // println!("Read UTF u16 {}", n_of_bytes);
                 let v = self.read_bytes(n_of_bytes.clone().try_into().expect("Error in readUTF"));
                 std::str::from_utf8(&v)
                     .expect("Error in readUTF")
                     .to_string()
-                // self.read_string()
             }),
             "Double" => AtomicType::Double(self.read_f64()),
             "VarUhLong" => AtomicType::VarUhLong({
-                let test = self.read_uint_64().to_number();
-                // println!("test: {}", test);
-                test.try_into().expect("test failed")
+                let var = self.read_uint_64().to_number();
+                var.try_into().expect("test failed")
             }),
             "VarLong" => AtomicType::VarLong({
-                println!("var_long");
-                self.read_i64().to_be()
+                let var = self.read_uint_64().to_number();
+                var.try_into().expect("test failed")
             }),
             "VarUhInt" => AtomicType::VarUhInt(self.read_var_uh_int()),
             "VarInt" => AtomicType::VarInt(self.read_var_int()),
@@ -256,9 +254,9 @@ enum AtomicType {
     UTF(String),
     Double(f64),
     VarUhLong(u64),
-    VarLong(i64),
+    VarLong(u64),
     VarUhInt(u32),
-    VarInt(i32),
+    VarInt(u32),
     VarShort(i16),
     VarUhShort(u16),
 }
@@ -336,7 +334,6 @@ impl PacketDecoder {
     pub fn decode_packet(&mut self, tcp_content: &[u8], port: u16) -> u32 {
         let t = tcp_content.clone();
         let mut ba = ByteBuffer::from_bytes(t);
-
         while ba.bytes_available() > 0 {
             if self.split_packet {
                 println!(
@@ -347,11 +344,10 @@ impl PacketDecoder {
                 );
 
                 if self.sba.len() + ba.bytes_available() < self.split_packet_length {
-                    let offset = self.sba.len().clone();
-                    ba.swap_bytes(&mut self.sba, offset, ba.bytes_available());
+                    ba.swap_bytes(&mut self.sba, ba.bytes_available());
                 } else {
                     let offset = self.sba.len().clone();
-                    ba.swap_bytes(&mut self.sba, offset, self.split_packet_length - offset);
+                    ba.swap_bytes(&mut self.sba, self.split_packet_length - offset);
 
                     self.sba.set_rpos(0);
 
@@ -372,7 +368,6 @@ impl PacketDecoder {
                     }
 
                     let consumed = self.sba.get_rpos() - initial_pos;
-                    ba.clear();
 
                     if self.split_packet_length - consumed != 0 {
                         println!("warning: forced to trim a packet !");
@@ -411,7 +406,6 @@ impl PacketDecoder {
                         .expect("Message has no name")
                         .as_str()
                         .unwrap();
-                    println!("- {}", name);
                 } else {
                     println!("Packet with unknown Id: {}", packet_id);
                     return 0;
@@ -440,14 +434,12 @@ impl PacketDecoder {
                 );
 
                 if length > ba.bytes_available() {
-                    println!("Set split packet");
                     self.split_packet = true;
                     self.split_packet_port = port;
                     self.split_packet_length = length;
                     self.split_packet_id = packet_id;
 
-                    let offset = self.sba.len().clone();
-                    ba.swap_bytes(&mut self.sba, offset, ba.bytes_available());
+                    ba.swap_bytes(&mut self.sba, ba.bytes_available());
                 } else {
                     let initial_pos = ba.get_rpos();
 
@@ -469,9 +461,8 @@ impl PacketDecoder {
                         }
 
                         let consumed = ba.get_rpos() - initial_pos;
-                        ba.clear();
 
-                        if length - consumed != 0 {
+                        if length as isize - consumed as isize != 0 {
                             println!("warning: forced to trim a packet !");
                             ba.set_rpos(min(initial_pos + length, ba.len()));
                         }
