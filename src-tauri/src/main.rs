@@ -2,17 +2,14 @@
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
-#![allow(unused_imports)]
 
 mod lib;
-use chrono::Local;
 use lib::{
     packet_capture::PacketCapture,
     packet_decoder::{DofusPacket, PacketDecoder},
-    packet_parse::ParsedPacket,
 };
 use pcap::{Capture, Device};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::Manager;
 
 #[derive(Clone, serde::Serialize)]

@@ -2,9 +2,9 @@
 
 use bytebuffer::ByteBuffer;
 use chrono::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::{json, Map, Value};
-use std::{cmp::min, collections::HashMap, fs, sync::atomic};
+use std::{cmp::min, collections::HashMap, fs};
 
 pub const PRIMITIVES: [&str; 17] = [
     "Boolean",
