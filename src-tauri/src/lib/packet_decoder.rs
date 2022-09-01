@@ -1,5 +1,3 @@
-#![allow(dead_code, unused_variables, non_snake_case)]
-
 use bytebuffer::ByteBuffer;
 use chrono::prelude::*;
 use serde::Serialize;
@@ -41,8 +39,8 @@ trait Buffer {
     fn bytes_available(&self) -> usize {
         0 as usize
     }
-    fn swap_bytes(&mut self, bytes: &mut ByteBuffer, len: usize) {}
-    fn read(&mut self, t: &str) -> AtomicType {
+    fn swap_bytes(&mut self, _bytes: &mut ByteBuffer, _len: usize) {}
+    fn read(&mut self, _t: &str) -> AtomicType {
         AtomicType::Boolean(true)
     }
     fn read_var_int(&mut self) -> u32 {
@@ -84,8 +82,6 @@ impl Buffer for ByteBuffer {
     fn read_var_int(&mut self) -> u32 {
         const INT_SIZE: isize = 32;
 
-        const UNSIGNED_SHORT_MAX_VALUE: isize = 65536;
-
         const CHUNCK_BIT_SIZE: isize = 7;
 
         const MASK_10000000: isize = 128;
@@ -95,17 +91,17 @@ impl Buffer for ByteBuffer {
         let mut b: isize;
         let mut value: isize = 0;
         let mut offset: isize = 0;
-        let mut hasNext: bool;
+        let mut has_next: bool;
         while offset < INT_SIZE {
             b = self.read_i8() as isize;
-            hasNext = (b & MASK_10000000) == MASK_10000000;
+            has_next = (b & MASK_10000000) == MASK_10000000;
             if offset > 0 {
                 value += (b & MASK_01111111) << offset;
             } else {
                 value += b & MASK_01111111;
             }
             offset += CHUNCK_BIT_SIZE;
-            if !hasNext {
+            if !has_next {
                 return value.try_into().expect("read_var_int failed to try to i32");
             }
         }
@@ -133,17 +129,17 @@ impl Buffer for ByteBuffer {
         let mut b: isize;
         let mut value: isize = 0;
         let mut offset: isize = 0;
-        let mut hasNext: bool;
+        let mut has_next: bool;
         while offset < 16 {
             b = self.read_i8() as isize;
-            hasNext = (b & MASK_10000000) == MASK_10000000;
+            has_next = (b & MASK_10000000) == MASK_10000000;
             if offset > 0 {
                 value += (b & MASK_01111111) << offset;
             } else {
                 value += b & MASK_01111111;
             }
             offset += CHUNCK_BIT_SIZE;
-            if !hasNext {
+            if !has_next {
                 if value > SHORT_MAX_VALUE {
                     value -= UNSIGNED_SHORT_MAX_VALUE;
                 }
@@ -400,13 +396,13 @@ impl PacketDecoder {
 
                 let msg = self.msg_from_types.get(&packet_id.to_string());
 
-                if let Some(message_type) = msg {
-                    let message_type = message_type.as_object().unwrap();
-                    let name = message_type
-                        .get("name")
-                        .expect("Message has no name")
-                        .as_str()
-                        .unwrap();
+                if let Some(_) = msg {
+                    // let message_type = message_type.as_object().unwrap();
+                    // let name = message_type
+                    //     .get("name")
+                    //     .expect("Message has no name")
+                    //     .as_str()
+                    //     .unwrap();
                 } else {
                     println!("Packet with unknown Id: {}", packet_id);
                     return 0;
@@ -522,13 +518,13 @@ impl PacketDecoder {
         types_from_id: &Map<String, Value>,
     ) -> Map<String, Value> {
         let mut result: Map<String, Value> = Map::new();
-        let msgSpec = types_from_name
+        let msg_spec = types_from_name
             .get(type_name)
-            .expect(format!("msgSpec missing ! typeName: {}", type_name).as_str())
+            .expect(format!("msg_spec missing ! typeName: {}", type_name).as_str())
             .as_object()
             .unwrap();
 
-        if let Some(parent) = msgSpec.get("parent") {
+        if let Some(parent) = msg_spec.get("parent") {
             if let Some(parent_name) = parent.as_str() {
                 let mut res = PacketDecoder::deserialize(
                     ba,
@@ -541,7 +537,7 @@ impl PacketDecoder {
             } // else means it's Null
         }
 
-        if let Some(bool_vars) = msgSpec.get("boolVars") {
+        if let Some(bool_vars) = msg_spec.get("boolVars") {
             if let Some(bool_vars_arr) = bool_vars.as_array() {
                 if bool_vars_arr.len() > 0 {
                     let mut j = 0;
@@ -563,7 +559,7 @@ impl PacketDecoder {
                                 .as_str()
                                 .unwrap();
 
-                            let res = getFlagBooleanByte(&box0, i);
+                            let res = get_flag_boolean_byte(&box0, i);
 
                             result.insert((&bool_name).to_string(), Value::Bool(res));
 
@@ -579,14 +575,14 @@ impl PacketDecoder {
             }
         }
 
-        if let Some(vars) = msgSpec.get("vars") {
+        if let Some(vars) = msg_spec.get("vars") {
             if let Some(vars_arr) = vars.as_array() {
                 for item in vars_arr.iter() {
                     let var = item.as_object().unwrap();
-                    let name = item.get("name").unwrap().as_str().unwrap();
-                    let length = item.get("length").unwrap();
-                    let var_type = item.get("type").unwrap().as_str().unwrap();
-                    let optional = item.get("optional").unwrap().as_bool().unwrap();
+                    let name = var.get("name").unwrap().as_str().unwrap();
+                    let length = var.get("length").unwrap();
+                    let var_type = var.get("type").unwrap().as_str().unwrap();
+                    let _optional = var.get("optional").unwrap().as_bool().unwrap();
 
                     if PRIMITIVES.contains(&var_type) {
                         // println!("value: {}", name);
@@ -646,10 +642,10 @@ impl PacketDecoder {
                                     AtomicType::VarUhShort(v) => v.to_string(),
                                 };
 
-                                let atomic_res = match atomic_length.parse::<u64>() {
+                                let _atomic_res = match atomic_length.parse::<u64>() {
                                     Ok(size) => {
                                         let mut arr_temp = Vec::<Map<String, Value>>::new();
-                                        for i in 0..size {
+                                        for _ in 0..size {
                                             if var_type == "ID" {
                                                 //
                                                 let id_num = ba.read_u16();
@@ -730,7 +726,7 @@ impl PacketDecoder {
                 let atomic_res = match atomic_length.parse::<u64>() {
                     Ok(size) => {
                         let mut arr_temp = Vec::<Value>::new();
-                        for i in 0..size {
+                        for _ in 0..size {
                             let atomic = ba.read(var_type);
                             let json_value = atomic_to_serde_value(&atomic);
                             arr_temp.push(json_value);
@@ -772,7 +768,7 @@ fn atomic_to_serde_value(atomic: &AtomicType) -> Value {
     res
 }
 
-fn getFlagBooleanByte(a: &i16, pos: usize) -> bool {
+fn get_flag_boolean_byte(a: &i16, pos: usize) -> bool {
     let b = false;
     match pos {
         0 => (a & 1) != 0,
