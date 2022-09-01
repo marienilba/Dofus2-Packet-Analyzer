@@ -76,8 +76,6 @@ impl Buffer for ByteBuffer {
         }
 
         bytes.write_bytes(&self.read_bytes(length));
-
-        self.set_rpos(min(self.get_rpos() + length, self.len()));
     }
     fn read_var_int(&mut self) -> u32 {
         const INT_SIZE: isize = 32;
@@ -328,7 +326,7 @@ impl PacketDecoder {
         }
     }
 
-    pub fn decode_packet(&mut self, tcp_content: &[u8], port: u16) -> u32 {
+    pub fn decode_packet(&mut self, tcp_content: &[u8], port: u16) {
         let t = tcp_content.clone();
         let mut ba = ByteBuffer::from_bytes(t);
         while ba.bytes_available() > 0 {
@@ -371,6 +369,11 @@ impl PacketDecoder {
                         ba.set_rpos(min(initial_pos + self.split_packet_length, self.sba.len()));
                     }
 
+                    println!(
+                        "Ended to decode the packet, ba left: {}",
+                        ba.bytes_available()
+                    );
+
                     // reset
                     self.split_packet = false;
                     self.sba = ByteBuffer::new();
@@ -380,12 +383,12 @@ impl PacketDecoder {
             } else {
                 if ba.bytes_available() < 2 {
                     println!("Empty packet");
-                    return 0;
+                    return;
                 }
 
                 let hi_header = ba.read_u16();
                 let packet_id = hi_header >> 2;
-                let length_type = hi_header & 0b11;
+                let length_type = hi_header & 3;
 
                 let mut length: usize = 0;
                 let mut _instance_id = 0;
@@ -404,8 +407,14 @@ impl PacketDecoder {
                     //     .as_str()
                     //     .unwrap();
                 } else {
-                    println!("Packet with unknown Id: {}", packet_id);
-                    return 0;
+                    println!(
+                        "Packet with unknown Id: {}, bytes available {}",
+                        packet_id,
+                        ba.bytes_available()
+                    );
+                    // ba.clear();
+                    // ba.read_u8();
+                    break;
                 }
 
                 if length_type == 0 {
@@ -415,6 +424,7 @@ impl PacketDecoder {
                 } else if length_type == 2 {
                     length = ba.read_u16() as usize;
                 } else if length_type == 3 {
+                    println!("length type 3 mtf lol");
                     length = (((ba.read_i8() as i32 & 255) << 16)
                         + ((ba.read_i8() as i32 & 255) << 8)
                         + (ba.read_i8() as i32 & 255))
@@ -462,11 +472,15 @@ impl PacketDecoder {
                             println!("warning: forced to trim a packet !");
                             ba.set_rpos(min(initial_pos + length, ba.len()));
                         }
+
+                        println!(
+                            "Ended to decode the packet, ba left: {}",
+                            ba.bytes_available()
+                        );
                     }
                 }
             }
         }
-        1
     }
 
     fn parse_ba_to_object(
@@ -524,6 +538,7 @@ impl PacketDecoder {
             .as_object()
             .unwrap();
 
+        // println!("name: {}", type_name);
         if let Some(parent) = msg_spec.get("parent") {
             if let Some(parent_name) = parent.as_str() {
                 let mut res = PacketDecoder::deserialize(
@@ -583,7 +598,7 @@ impl PacketDecoder {
                     let length = var.get("length").unwrap();
                     let var_type = var.get("type").unwrap().as_str().unwrap();
                     let _optional = var.get("optional").unwrap().as_bool().unwrap();
-
+                    // println!("name {}", name);
                     if PRIMITIVES.contains(&var_type) {
                         // println!("value: {}", name);
                         let res = PacketDecoder::read_atomic_types(ba, length, var_type);
@@ -624,66 +639,51 @@ impl PacketDecoder {
                                 }
                             }
                             Value::String(len_type) => {
-                                let data_len = ba.read(len_type);
-                                let atomic_length = match data_len {
-                                    AtomicType::Boolean(v) => v.to_string(),
-                                    AtomicType::UnsignedByte(v) => v.to_string(),
-                                    AtomicType::Byte(v) => v.to_string(),
-                                    AtomicType::UnsignedShort(v) => v.to_string(),
-                                    AtomicType::Short(v) => v.to_string(),
-                                    AtomicType::Int(v) => v.to_string(),
-                                    AtomicType::UTF(v) => v.to_string(),
-                                    AtomicType::Double(v) => v.to_string(),
-                                    AtomicType::VarUhLong(v) => v.to_string(),
-                                    AtomicType::VarLong(v) => v.to_string(),
-                                    AtomicType::VarUhInt(v) => v.to_string(),
-                                    AtomicType::VarInt(v) => v.to_string(),
-                                    AtomicType::VarShort(v) => v.to_string(),
-                                    AtomicType::VarUhShort(v) => v.to_string(),
-                                };
+                                if let Some(size) = get_atomic_length(ba, len_type) {
+                                    let mut arr_temp = Vec::<Map<String, Value>>::new();
+                                    // errors here
+                                    //if var_type == "TaxCollectorFightersInformation" {
+                                    // println!(
+                                    //     "length: {}, len_type: {}, name {}",
+                                    //     size, len_type, name
+                                    // );
+                                    //}
 
-                                let _atomic_res = match atomic_length.parse::<u64>() {
-                                    Ok(size) => {
-                                        let mut arr_temp = Vec::<Map<String, Value>>::new();
-                                        for _ in 0..size {
-                                            if var_type == "ID" {
-                                                //
-                                                let id_num = ba.read_u16();
-                                                let id_type =
-                                                    types_from_id.get(&id_num.to_string());
-                                                if let Some(id) = id_type {
-                                                    let name = id
-                                                        .get("name")
-                                                        .expect("Types from id has no name")
-                                                        .as_str()
-                                                        .unwrap();
-                                                    let res = PacketDecoder::deserialize(
-                                                        ba,
-                                                        name,
-                                                        message_type,
-                                                        types_from_name,
-                                                        types_from_id,
-                                                    );
-                                                    arr_temp.push(res);
-                                                    // result.append(&mut res);
-                                                }
-                                            } else {
+                                    for _ in 0..size {
+                                        if var_type == "ID" {
+                                            let id_num = ba.read_u16();
+                                            let id_type = types_from_id.get(&id_num.to_string());
+                                            if let Some(id) = id_type {
+                                                let name = id
+                                                    .get("name")
+                                                    .expect("Types from id has no name")
+                                                    .as_str()
+                                                    .unwrap();
                                                 let res = PacketDecoder::deserialize(
                                                     ba,
-                                                    var_type,
+                                                    name,
                                                     message_type,
                                                     types_from_name,
                                                     types_from_id,
                                                 );
                                                 arr_temp.push(res);
+                                                // result.append(&mut res);
                                             }
+                                        } else {
+                                            let res = PacketDecoder::deserialize(
+                                                ba,
+                                                var_type,
+                                                message_type,
+                                                types_from_name,
+                                                types_from_id,
+                                            );
+                                            arr_temp.push(res);
                                         }
-                                        let mut res_map = Map::new();
-                                        res_map.insert((&name).to_string(), json!(arr_temp));
-                                        result.append(&mut res_map);
                                     }
-                                    Err(_) => (),
-                                };
+                                    let mut res_map = Map::new();
+                                    res_map.insert((&name).to_string(), json!(arr_temp));
+                                    result.append(&mut res_map);
+                                }
                             }
                             _ => {}
                         }
@@ -705,38 +705,50 @@ impl PacketDecoder {
         // }
         match var_length {
             Value::String(length) => {
-                let ba_len = ba.read(&length);
-                let atomic_length = match ba_len {
-                    AtomicType::Boolean(v) => v.to_string(),
-                    AtomicType::UnsignedByte(v) => v.to_string(),
-                    AtomicType::Byte(v) => v.to_string(),
-                    AtomicType::UnsignedShort(v) => v.to_string(),
-                    AtomicType::Short(v) => v.to_string(),
-                    AtomicType::Int(v) => v.to_string(),
-                    AtomicType::UTF(v) => v.to_string(),
-                    AtomicType::Double(v) => v.to_string(),
-                    AtomicType::VarUhLong(v) => v.to_string(),
-                    AtomicType::VarLong(v) => v.to_string(),
-                    AtomicType::VarUhInt(v) => v.to_string(),
-                    AtomicType::VarInt(v) => v.to_string(),
-                    AtomicType::VarShort(v) => v.to_string(),
-                    AtomicType::VarUhShort(v) => v.to_string(),
-                };
-
-                let atomic_res = match atomic_length.parse::<u64>() {
-                    Ok(size) => {
-                        let mut arr_temp = Vec::<Value>::new();
-                        for _ in 0..size {
-                            let atomic = ba.read(var_type);
-                            let json_value = atomic_to_serde_value(&atomic);
-                            arr_temp.push(json_value);
-                        }
-                        Value::Array(arr_temp)
+                // let atomic_res: Value;
+                if let Some(size) = get_atomic_length(ba, length) {
+                    let mut arr_temp = Vec::<Value>::new();
+                    for _ in 0..size {
+                        let atomic = ba.read(var_type);
+                        let json_value = atomic_to_serde_value(&atomic);
+                        arr_temp.push(json_value);
                     }
-                    Err(_) => Value::Null,
-                };
+                    Value::Array(arr_temp)
+                } else {
+                    Value::Null
+                }
+                // let ba_len = ba.read(&length);
+                // let atomic_length = match ba_len {
+                //     AtomicType::Boolean(v) => v.to_string(),
+                //     AtomicType::UnsignedByte(v) => v.to_string(),
+                //     AtomicType::Byte(v) => v.to_string(),
+                //     AtomicType::UnsignedShort(v) => v.to_string(),
+                //     AtomicType::Short(v) => v.to_string(),
+                //     AtomicType::Int(v) => v.to_string(),
+                //     AtomicType::UTF(v) => v.to_string(),
+                //     AtomicType::Double(v) => v.to_string(),
+                //     AtomicType::VarUhLong(v) => v.to_string(),
+                //     AtomicType::VarLong(v) => v.to_string(),
+                //     AtomicType::VarUhInt(v) => v.to_string(),
+                //     AtomicType::VarInt(v) => v.to_string(),
+                //     AtomicType::VarShort(v) => v.to_string(),
+                //     AtomicType::VarUhShort(v) => v.to_string(),
+                // };
 
-                atomic_res
+                // let atomic_res = match atomic_length.parse::<u64>() {
+                //     Ok(size) => {
+                //         let mut arr_temp = Vec::<Value>::new();
+                //         for _ in 0..size {
+                //             let atomic = ba.read(var_type);
+                //             let json_value = atomic_to_serde_value(&atomic);
+                //             arr_temp.push(json_value);
+                //         }
+                //         Value::Array(arr_temp)
+                //     }
+                //     Err(_) => Value::Null,
+                // };
+
+                // atomic_res
             }
             _ => {
                 let atomic = ba.read(var_type);
@@ -745,6 +757,34 @@ impl PacketDecoder {
             }
         }
     }
+}
+
+fn get_atomic_length(ba: &mut ByteBuffer, length: &String) -> Option<u16> {
+    let ba_len = ba.read(&length);
+    let atomic_length = match ba_len {
+        AtomicType::Boolean(v) => v.to_string(),
+        AtomicType::UnsignedByte(v) => v.to_string(),
+        AtomicType::Byte(v) => v.to_string(),
+        AtomicType::UnsignedShort(v) => v.to_string(),
+        AtomicType::Short(v) => v.to_string(),
+        AtomicType::Int(v) => v.to_string(),
+        AtomicType::UTF(v) => v.to_string(),
+        AtomicType::Double(v) => v.to_string(),
+        AtomicType::VarUhLong(v) => v.to_string(),
+        AtomicType::VarLong(v) => v.to_string(),
+        AtomicType::VarUhInt(v) => v.to_string(),
+        AtomicType::VarInt(v) => v.to_string(),
+        AtomicType::VarShort(v) => v.to_string(),
+        AtomicType::VarUhShort(v) => v.to_string(),
+    };
+
+    let atomic_res = match atomic_length.parse::<u16>() {
+        Ok(size) => Some(size),
+        Err(_) => None,
+    };
+    //}
+
+    atomic_res
 }
 
 fn atomic_to_serde_value(atomic: &AtomicType) -> Value {
