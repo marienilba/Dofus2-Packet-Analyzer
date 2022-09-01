@@ -5,9 +5,11 @@
 #![allow(unused_imports)]
 
 mod lib;
-
+use chrono::Local;
 use lib::{
-    packet_capture::PacketCapture, packet_decoder::PacketDecoder, packet_parse::ParsedPacket,
+    packet_capture::PacketCapture,
+    packet_decoder::{DofusPacket, PacketDecoder},
+    packet_parse::ParsedPacket,
 };
 use pcap::{Capture, Device};
 use serde::{Deserialize, Serialize};
@@ -18,20 +20,16 @@ struct Payload {
     message: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct Message {
-    remaining: Vec<u8>,
-    len: usize,
+#[derive(Serialize)]
+struct ServerMessage {
+    data: Vec<DofusPacket>,
 }
-
-impl Message {
-    pub fn new(packet: &[u8], len: usize) -> Message {
-        Message {
-            remaining: packet.to_vec(),
-            len,
-        }
+impl ServerMessage {
+    pub fn new(dp: Vec<DofusPacket>) -> ServerMessage {
+        ServerMessage { data: dp }
     }
 }
+
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -73,10 +71,11 @@ fn main() {
 
                         // we remove the header from the data, slice at 54
                         let tcp_content = &packet.data[54..];
-
                         decoder.decode_packet(&tcp_content, 5555);
-                        let message = Message::new(tcp_content, packet.len());
-                        rs2js(serde_json::to_string(&message).unwrap(), &app_handle);
+                        let messages = decoder.get_messages();
+                        let server_message = ServerMessage::new(messages);
+
+                        rs2js(serde_json::to_string(&server_message).unwrap(), &app_handle);
                     }
                 }
             });

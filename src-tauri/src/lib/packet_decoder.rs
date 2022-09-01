@@ -1,10 +1,9 @@
 #![allow(dead_code, unused_variables, non_snake_case)]
-// use std::any::Any;
 
-use anyhow::Result;
 use bytebuffer::ByteBuffer;
+use chrono::prelude::*;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-
 use std::{cmp::min, collections::HashMap, fs, sync::atomic};
 
 pub const PRIMITIVES: [&str; 17] = [
@@ -62,6 +61,7 @@ trait Buffer {
         UInt64 { low: 0, high: 0 }
     }
 }
+
 impl Buffer for ByteBuffer {
     fn bytes_available(&self) -> usize {
         return self.len() - self.get_rpos();
@@ -260,24 +260,26 @@ enum AtomicType {
     VarShort(i16),
     VarUhShort(u16),
 }
-struct DofusPacket {
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DofusPacket {
     source: String,
     time: String,
-    id: u32,
+    id: u16,
     name: String,
     raw: String,
-    body: String,
+    body: Map<String, Value>,
 }
 
 impl DofusPacket {
-    fn new() -> DofusPacket {
+    fn new(source: String, time: i64, id: u16, raw: String) -> DofusPacket {
         DofusPacket {
-            source: "".to_string(),
-            time: "".to_string(),
-            id: 0,
+            source,
+            time: time.to_string(),
+            id,
             name: "".to_string(),
-            raw: "".to_string(),
-            body: "".to_string(),
+            raw,
+            body: Map::new(),
         }
     }
 }
@@ -289,7 +291,6 @@ pub struct PacketDecoder {
     split_packet_length: usize,
     split_packet_port: u16,
     queue: Vec<DofusPacket>,
-    // messages:
     msg_from_types: Map<String, Value>,
     types_from_id: Map<String, Value>,
     types: Map<String, Value>,
@@ -411,7 +412,6 @@ impl PacketDecoder {
                     return 0;
                 }
 
-                // println!("Before, bytes: {:?}", ba.to_bytes());
                 if length_type == 0 {
                     length = 0;
                 } else if length_type == 1 {
@@ -480,10 +480,14 @@ impl PacketDecoder {
         types_from_id: &Map<String, Value>,
         types: &Map<String, Value>,
     ) -> Result<DofusPacket, &'static str> {
-        let dofus_packet = DofusPacket::new();
+        let mut dofus_packet = DofusPacket::new(
+            "Server".to_owned(),
+            Local::now().timestamp(),
+            packet_id,
+            packet_content.to_string(),
+        );
 
         let msg = msg_from_types.get(&packet_id.to_string());
-
         if let Some(message_type) = msg {
             let message_type = message_type.as_object().unwrap();
             let name = message_type
@@ -492,6 +496,8 @@ impl PacketDecoder {
                 .as_str()
                 .unwrap();
 
+            dofus_packet.name = name.to_string();
+
             let decoded = PacketDecoder::deserialize(
                 packet_content,
                 name,
@@ -499,10 +505,8 @@ impl PacketDecoder {
                 types,
                 types_from_id,
             );
-            println!(
-                "decoded msg: {}",
-                serde_json::to_string_pretty(&decoded).unwrap()
-            );
+
+            dofus_packet.body = decoded;
         } else {
             return Err("Error when parsing the ba to object");
         }
@@ -695,6 +699,11 @@ impl PacketDecoder {
         result
     }
 
+    pub fn get_messages(&mut self) -> Vec<DofusPacket> {
+        let queue = self.queue.clone();
+        self.queue.clear();
+        queue
+    }
     fn read_atomic_types(ba: &mut ByteBuffer, var_length: &Value, var_type: &str) -> Value {
         // if (desc.optional) {
         // }

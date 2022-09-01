@@ -1,9 +1,9 @@
 <script lang="ts">
-  import Messages from "./components/Messages.svelte";
+  import Dashboard from "./components/Dashboard.svelte";
 </script>
 
 <main class="min-h-screen min-w-screen">
-  <Messages />
+  <Dashboard />
 </main>
 
 <style>

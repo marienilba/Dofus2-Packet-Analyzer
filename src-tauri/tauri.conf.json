@@ -6,8 +6,8 @@
     "distDir": "../dist"
   },
   "package": {
-    "productName": "tauri-app",
-    "version": "0.0.0"
+    "productName": "Dofus Packet Analyzer",
+    "version": "0.0.1"
   },
   "tauri": {
     "allowlist": {
@@ -55,10 +55,10 @@
     "windows": [
       {
         "fullscreen": false,
-        "height": 600,
+        "height": 1920,
         "resizable": true,
-        "title": "tauri-app",
-        "width": 800
+        "title": "Dofus Packet Analyzer",
+        "width": 1080
       }
     ]
   }
