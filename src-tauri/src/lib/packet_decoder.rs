@@ -393,7 +393,7 @@ impl PacketDecoder {
                 if let Some(_) = msg {
                 } else {
                     println!(
-                        "Packet with unknown Id: {}, bytes available {}",
+                        "Might be ETH trailer -> unknown id: {} - bytes available {}",
                         packet_id,
                         ba.bytes_available()
                     );
@@ -404,11 +404,25 @@ impl PacketDecoder {
                 if length_type == 0 {
                     length = 0;
                 } else if length_type == 1 {
+                    if ba.bytes_available() < 1 {
+                        println!("Prevent overflow panic, should not append");
+                        break;
+                    }
                     length = ba.read_u8() as usize;
                 } else if length_type == 2 {
+                    if ba.bytes_available() < 2 {
+                        println!("Prevent overflow panic, should not append");
+                        break;
+                    }
+
                     length = ba.read_u16() as usize;
                 } else if length_type == 3 {
-                    println!("length type 3 mtf lol");
+                    println!("length type 3 mtf lol, id {}", packet_id);
+                    if ba.bytes_available() < 3 {
+                        println!("Prevent overflow panic, should not append");
+                        break;
+                    }
+
                     length = (((ba.read_i8() as i32 & 255) << 16)
                         + ((ba.read_i8() as i32 & 255) << 8)
                         + (ba.read_i8() as i32 & 255))
