@@ -2,7 +2,7 @@ use bytebuffer::ByteBuffer;
 use chrono::prelude::*;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
-use std::{cmp::min, collections::HashMap, fs};
+use std::{cmp::min, collections::HashMap, convert::TryInto, fs};
 
 pub const PRIMITIVES: [&str; 17] = [
     "Boolean",
@@ -23,6 +23,26 @@ pub const PRIMITIVES: [&str; 17] = [
     "VarUhLong",
     "VarUhShort",
 ];
+#[derive(Debug)]
+enum AtomicType {
+    UnsignedByte(u8),
+    Byte(i8),
+    UnsignedShort(u16),
+    UnsignedInt(u32),
+    Short(i16),
+    Int(i32),
+    Boolean(bool),
+    UTF(String),
+    Double(f64),
+    VarUhLong(u64),
+    VarLong(u64),
+    VarUhInt(u32),
+    VarInt(u32),
+    VarShort(i16),
+    VarUhShort(u16),
+    Float(f32),
+    ByteArray(Vec<u8>),
+}
 
 struct UInt64 {
     low: usize,
@@ -36,28 +56,14 @@ impl UInt64 {
 }
 
 trait Buffer {
-    fn bytes_available(&self) -> usize {
-        0 as usize
-    }
-    fn swap_bytes(&mut self, _bytes: &mut ByteBuffer, _len: usize) {}
-    fn read(&mut self, _t: &str) -> AtomicType {
-        AtomicType::Boolean(true)
-    }
-    fn read_var_int(&mut self) -> u32 {
-        0
-    }
-    fn read_var_uh_int(&mut self) -> u32 {
-        0
-    }
-    fn read_var_short(&mut self) -> i16 {
-        0
-    }
-    fn read_var_uh_short(&mut self) -> u16 {
-        0
-    }
-    fn read_uint_64(&mut self) -> UInt64 {
-        UInt64 { low: 0, high: 0 }
-    }
+    fn bytes_available(&self) -> usize;
+    fn swap_bytes(&mut self, _bytes: &mut ByteBuffer, _len: usize);
+    fn read(&mut self, _t: &str) -> AtomicType;
+    fn read_var_int(&mut self) -> u32;
+    fn read_var_uh_int(&mut self) -> u32;
+    fn read_var_short(&mut self) -> i16;
+    fn read_var_uh_short(&mut self) -> u16;
+    fn read_uint_64(&mut self) -> UInt64;
 }
 
 impl Buffer for ByteBuffer {
@@ -204,6 +210,8 @@ impl Buffer for ByteBuffer {
             "UnsignedShort" => AtomicType::UnsignedShort(self.read_u16()),
             "Short" => AtomicType::Short(self.read_i16()),
             "Int" => AtomicType::Int(self.read_i32()),
+            "UnsignedInt" => AtomicType::UnsignedInt(self.read_u32()),
+            "Float" => AtomicType::Float(self.read_f32()),
             "Boolean" => {
                 let b = self.read_i8();
                 if b == 0 {
@@ -229,32 +237,18 @@ impl Buffer for ByteBuffer {
             }),
             "VarUhInt" => AtomicType::VarUhInt(self.read_var_uh_int()),
             "VarInt" => AtomicType::VarInt(self.read_var_int()),
-            "VarShort" => AtomicType::VarShort(self.read_var_short()),
             "VarUhShort" => AtomicType::VarUhShort(self.read_var_uh_short()),
+            "VarShort" => AtomicType::VarShort(self.read_var_short()),
+            "ByteArray" => AtomicType::ByteArray({
+                let content_len: usize = self.read_var_int().try_into().unwrap();
+                self.read_bytes(content_len)
+            }),
             _ => {
                 println!("{} type is not implemented", t);
                 AtomicType::Boolean(false)
             }
         }
     }
-}
-
-#[derive(Debug)]
-enum AtomicType {
-    UnsignedByte(u8),
-    Byte(i8),
-    UnsignedShort(u16),
-    Short(i16),
-    Int(i32),
-    Boolean(bool),
-    UTF(String),
-    Double(f64),
-    VarUhLong(u64),
-    VarLong(u64),
-    VarUhInt(u32),
-    VarInt(u32),
-    VarShort(i16),
-    VarUhShort(u16),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -294,7 +288,7 @@ pub struct PacketDecoder {
 
 impl PacketDecoder {
     pub fn new() -> PacketDecoder {
-        let data = fs::read_to_string("./src/utils/network-message/2.63/messages.json")
+        let data = fs::read_to_string("./src/utils/network-message/2.64/messages.json")
             .expect("Unable to open messages.json file");
 
         let json: HashMap<String, Value> =
@@ -371,11 +365,6 @@ impl PacketDecoder {
                         ba.set_rpos(min(initial_pos + self.split_packet_length, self.sba.len()));
                     }
 
-                    println!(
-                        "Ended to decode the packet, ba left: {}",
-                        ba.bytes_available()
-                    );
-
                     // reset
                     self.split_packet = false;
                     self.sba = ByteBuffer::new();
@@ -402,20 +391,13 @@ impl PacketDecoder {
                 let msg = self.msg_from_types.get(&packet_id.to_string());
 
                 if let Some(_) = msg {
-                    // let message_type = message_type.as_object().unwrap();
-                    // let name = message_type
-                    //     .get("name")
-                    //     .expect("Message has no name")
-                    //     .as_str()
-                    //     .unwrap();
                 } else {
                     println!(
                         "Packet with unknown Id: {}, bytes available {}",
                         packet_id,
                         ba.bytes_available()
                     );
-                    // ba.clear();
-                    // ba.read_u8();
+
                     break;
                 }
 
@@ -600,19 +582,6 @@ impl PacketDecoder {
                     let length = var.get("length").unwrap();
                     let var_type = var.get("type").unwrap().as_str().unwrap();
                     let optional = var.get("optional").unwrap().as_bool().unwrap();
-                    /*
-                    ArenaRankInfos, have to handle optional
-                    optional work as this ->
-                       if(input.readByte() == 0)
-                        {
-                            this.ranking = null;
-                        }
-                        else
-                        {
-                            this.ranking = new ArenaRanking();
-                            this.ranking.deserialize(input);
-                        }
-                    */
 
                     if optional == true {
                         if ba.read_i8() != 0 {
@@ -620,9 +589,7 @@ impl PacketDecoder {
                         }
                     }
 
-                    // println!("name {}", name);
                     if PRIMITIVES.contains(&var_type) {
-                        // println!("value: {}", name);
                         let res = PacketDecoder::read_atomic_types(ba, length, var_type);
                         let mut map_res = Map::new();
                         map_res.insert((&name).to_string(), res);
@@ -663,13 +630,6 @@ impl PacketDecoder {
                             Value::String(len_type) => {
                                 if let Some(size) = get_atomic_length(ba, len_type) {
                                     let mut arr_temp = Vec::<Map<String, Value>>::new();
-                                    // errors here
-                                    //if var_type == "TaxCollectorFightersInformation" {
-                                    // println!(
-                                    //     "length: {}, len_type: {}, name {}",
-                                    //     size, len_type, name
-                                    // );
-                                    //}
 
                                     for _ in 0..size {
                                         if var_type == "ID" {
@@ -707,6 +667,44 @@ impl PacketDecoder {
                                     result.append(&mut res_map);
                                 }
                             }
+                            Value::Number(size) => {
+                                let mut arr_temp = Vec::<Map<String, Value>>::new();
+
+                                for _ in 0..size.as_u64().unwrap() {
+                                    if var_type == "ID" {
+                                        let id_num = ba.read_u16();
+                                        let id_type = types_from_id.get(&id_num.to_string());
+                                        if let Some(id) = id_type {
+                                            let name = id
+                                                .get("name")
+                                                .expect("Types from id has no name")
+                                                .as_str()
+                                                .unwrap();
+                                            let res = PacketDecoder::deserialize(
+                                                ba,
+                                                name,
+                                                message_type,
+                                                types_from_name,
+                                                types_from_id,
+                                            );
+                                            arr_temp.push(res);
+                                            // result.append(&mut res);
+                                        }
+                                    } else {
+                                        let res = PacketDecoder::deserialize(
+                                            ba,
+                                            var_type,
+                                            message_type,
+                                            types_from_name,
+                                            types_from_id,
+                                        );
+                                        arr_temp.push(res);
+                                    }
+                                }
+                                let mut res_map = Map::new();
+                                res_map.insert((&name).to_string(), json!(arr_temp));
+                                result.append(&mut res_map);
+                            }
                             _ => {}
                         }
                     }
@@ -723,8 +721,6 @@ impl PacketDecoder {
         queue
     }
     fn read_atomic_types(ba: &mut ByteBuffer, var_length: &Value, var_type: &str) -> Value {
-        // if (desc.optional) {
-        // }
         match var_length {
             Value::String(length) => {
                 // let atomic_res: Value;
@@ -739,38 +735,6 @@ impl PacketDecoder {
                 } else {
                     Value::Null
                 }
-                // let ba_len = ba.read(&length);
-                // let atomic_length = match ba_len {
-                //     AtomicType::Boolean(v) => v.to_string(),
-                //     AtomicType::UnsignedByte(v) => v.to_string(),
-                //     AtomicType::Byte(v) => v.to_string(),
-                //     AtomicType::UnsignedShort(v) => v.to_string(),
-                //     AtomicType::Short(v) => v.to_string(),
-                //     AtomicType::Int(v) => v.to_string(),
-                //     AtomicType::UTF(v) => v.to_string(),
-                //     AtomicType::Double(v) => v.to_string(),
-                //     AtomicType::VarUhLong(v) => v.to_string(),
-                //     AtomicType::VarLong(v) => v.to_string(),
-                //     AtomicType::VarUhInt(v) => v.to_string(),
-                //     AtomicType::VarInt(v) => v.to_string(),
-                //     AtomicType::VarShort(v) => v.to_string(),
-                //     AtomicType::VarUhShort(v) => v.to_string(),
-                // };
-
-                // let atomic_res = match atomic_length.parse::<u64>() {
-                //     Ok(size) => {
-                //         let mut arr_temp = Vec::<Value>::new();
-                //         for _ in 0..size {
-                //             let atomic = ba.read(var_type);
-                //             let json_value = atomic_to_serde_value(&atomic);
-                //             arr_temp.push(json_value);
-                //         }
-                //         Value::Array(arr_temp)
-                //     }
-                //     Err(_) => Value::Null,
-                // };
-
-                // atomic_res
             }
             _ => {
                 let atomic = ba.read(var_type);
@@ -784,13 +748,11 @@ impl PacketDecoder {
 fn get_atomic_length(ba: &mut ByteBuffer, length: &String) -> Option<u16> {
     let ba_len = ba.read(&length);
     let atomic_length = match ba_len {
-        AtomicType::Boolean(v) => v.to_string(),
         AtomicType::UnsignedByte(v) => v.to_string(),
         AtomicType::Byte(v) => v.to_string(),
         AtomicType::UnsignedShort(v) => v.to_string(),
         AtomicType::Short(v) => v.to_string(),
         AtomicType::Int(v) => v.to_string(),
-        AtomicType::UTF(v) => v.to_string(),
         AtomicType::Double(v) => v.to_string(),
         AtomicType::VarUhLong(v) => v.to_string(),
         AtomicType::VarLong(v) => v.to_string(),
@@ -798,6 +760,9 @@ fn get_atomic_length(ba: &mut ByteBuffer, length: &String) -> Option<u16> {
         AtomicType::VarInt(v) => v.to_string(),
         AtomicType::VarShort(v) => v.to_string(),
         AtomicType::VarUhShort(v) => v.to_string(),
+        AtomicType::Float(v) => v.to_string(),
+        AtomicType::UnsignedInt(v) => v.to_string(),
+        _ => String::from(""),
     };
 
     let atomic_res = match atomic_length.parse::<u16>() {
@@ -825,8 +790,10 @@ fn atomic_to_serde_value(atomic: &AtomicType) -> Value {
         AtomicType::VarInt(v) => json!(v),
         AtomicType::VarShort(v) => json!(v),
         AtomicType::VarUhShort(v) => json!(v),
+        AtomicType::Float(v) => json!(v),
+        AtomicType::UnsignedInt(v) => json!(v),
+        AtomicType::ByteArray(v) => json!(v),
     };
-    // println!("atomic to serde res: {}, type {:?}", res, atomic);
     res
 }
 
