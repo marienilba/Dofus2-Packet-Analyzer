@@ -24,7 +24,9 @@
 </script>
 
 <div
-  class="flex flex-row gap-2 bg-slate-700 text-slate-100 border-solid border border-slate-800 p-2 hover:bg-slate-800 cursor-pointer rounded"
+  class={`flex flex-row gap-2 ${
+    message.source === "Server" ? "bg-slate-700" : "bg-slate-500"
+  }  text-slate-100 border-solid border border-slate-800 p-2 hover:bg-slate-800 cursor-pointer rounded`}
   on:click={() => select(message)}
 >
   <p class="min-w-xs text-yellow-400 font-bold">{time_format}</p>

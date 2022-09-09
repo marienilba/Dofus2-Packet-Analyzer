@@ -2,7 +2,7 @@
   import Dashboard from "./components/Dashboard.svelte";
 </script>
 
-<main class="min-h-screen min-w-screen">
+<main class="min-h-screen min-w-screen bg-slate-700">
   <Dashboard />
 </main>
 

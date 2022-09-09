@@ -348,6 +348,7 @@ impl PacketDecoder {
                     let message_object = PacketDecoder::parse_ba_to_object(
                         &mut self.sba,
                         self.split_packet_id,
+                        self.split_packet_port,
                         &self.msg_from_types,
                         &self.types_from_id,
                         &self.types,
@@ -385,7 +386,7 @@ impl PacketDecoder {
                 let mut _instance_id = 0;
 
                 if port != 5555 {
-                    _instance_id = ba.read_u8();
+                    _instance_id = ba.read_u32();
                 }
 
                 let msg = self.msg_from_types.get(&packet_id.to_string());
@@ -417,7 +418,6 @@ impl PacketDecoder {
 
                     length = ba.read_u16() as usize;
                 } else if length_type == 3 {
-                    println!("length type 3 mtf lol, id {}", packet_id);
                     if ba.bytes_available() < 3 {
                         println!("Prevent overflow panic, should not append");
                         break;
@@ -454,6 +454,7 @@ impl PacketDecoder {
                         let message_object = PacketDecoder::parse_ba_to_object(
                             &mut ba,
                             packet_id,
+                            port,
                             &self.msg_from_types,
                             &self.types_from_id,
                             &self.types,
@@ -484,12 +485,19 @@ impl PacketDecoder {
     fn parse_ba_to_object(
         packet_content: &mut ByteBuffer,
         packet_id: u16,
+        port: u16,
         msg_from_types: &Map<String, Value>,
         types_from_id: &Map<String, Value>,
         types: &Map<String, Value>,
     ) -> Result<DofusPacket, &'static str> {
+        let source = if port == 5555 {
+            String::from("Server")
+        } else {
+            String::from("Client")
+        };
+
         let mut dofus_packet = DofusPacket::new(
-            "Server".to_owned(),
+            source,
             Local::now().timestamp(),
             packet_id,
             packet_content.to_string(),
@@ -536,7 +544,6 @@ impl PacketDecoder {
             .as_object()
             .unwrap();
 
-        // println!("name: {}", type_name);
         if let Some(parent) = msg_spec.get("parent") {
             if let Some(parent_name) = parent.as_str() {
                 let mut res = PacketDecoder::deserialize(
@@ -737,7 +744,6 @@ impl PacketDecoder {
     fn read_atomic_types(ba: &mut ByteBuffer, var_length: &Value, var_type: &str) -> Value {
         match var_length {
             Value::String(length) => {
-                // let atomic_res: Value;
                 if let Some(size) = get_atomic_length(ba, length) {
                     let mut arr_temp = Vec::<Value>::new();
                     for _ in 0..size {
@@ -783,7 +789,6 @@ fn get_atomic_length(ba: &mut ByteBuffer, length: &String) -> Option<u16> {
         Ok(size) => Some(size),
         Err(_) => None,
     };
-    //}
 
     atomic_res
 }

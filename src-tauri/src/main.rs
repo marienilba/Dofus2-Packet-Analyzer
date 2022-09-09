@@ -35,8 +35,6 @@ fn main() {
                 println!("got event-name with payload {:?}", event.payload());
             });
 
-            // unlisten to the event using the `id` returned on the `listen_global` function
-            // an `once_global` API is also exposed on the `App` struct
             app.unlisten(id);
 
             //
@@ -54,8 +52,10 @@ fn main() {
                 .open()
                 .unwrap();
 
-            cap.filter("tcp port 5555 && dst host 192.168.1.10", true)
-                .unwrap();
+            cap.filter("tcp port 5555", true).unwrap();
+
+            // cap.filter("tcp port 5555 && dst host 192.168.1.10", true)
+            //     .unwrap();
             let app_handle = app.handle();
 
             tauri::async_runtime::spawn(async move {
@@ -64,11 +64,25 @@ fn main() {
                     while let Ok(packet) = cap.next_packet() {
                         // parsed.remaining flush data so we lose the len value for the dofus decoder.
                         // still needed for know if this is client or server
-                        let _parsed = PacketCapture::new().get_packet(&packet);
+                        let parsed = PacketCapture::new().get_packet(&packet);
+
+                        let mut source = 0;
+                        for (_, header) in parsed.headers.iter().enumerate() {
+                            source = match header {
+                                lib::packet_parse::PacketHeader::Tcp(tcp_header) => {
+                                    tcp_header.source_port
+                                }
+                                _ => 0,
+                            };
+                            if source != 0 {
+                                break;
+                            }
+                        }
 
                         // we remove the header from the data, slice at 54
                         let tcp_content = &packet.data[54..];
-                        decoder.decode_packet(&tcp_content, 5555);
+
+                        decoder.decode_packet(&tcp_content, source);
                         let messages = decoder.get_messages();
                         let server_message = ServerMessage::new(messages);
 
