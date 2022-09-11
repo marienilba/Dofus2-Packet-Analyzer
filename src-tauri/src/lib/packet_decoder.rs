@@ -514,15 +514,15 @@ impl PacketDecoder {
 
             dofus_packet.name = name.to_string();
 
-            let decoded = PacketDecoder::deserialize(
-                packet_content,
-                name,
-                message_type,
-                types,
-                types_from_id,
-            );
-
-            dofus_packet.body = decoded;
+            if packet_content.bytes_available() > 0 {
+                dofus_packet.body = PacketDecoder::deserialize(
+                    packet_content,
+                    name,
+                    message_type,
+                    types,
+                    types_from_id,
+                );
+            }
         } else {
             return Err("Error when parsing the ba to object");
         }
