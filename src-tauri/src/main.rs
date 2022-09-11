@@ -28,6 +28,8 @@ impl ServerMessage {
 }
 
 fn main() {
+    env_logger::init();
+
     tauri::Builder::default()
         .setup(|app| {
             let id = app.listen_global("event-name", |event| {
