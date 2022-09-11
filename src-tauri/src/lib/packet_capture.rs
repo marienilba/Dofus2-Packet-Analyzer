@@ -30,7 +30,10 @@ impl PacketCapture {
         return parsed_packet;
     }
 
-    fn _get_packet_meta(&self, parsed_packet: &ParsedPacket) -> (String, String, String, String) {
+    pub fn get_packet_meta(
+        &self,
+        parsed_packet: &ParsedPacket,
+    ) -> (String, String, String, String) {
         let mut src_addr = "".to_string();
         let mut dst_addr = "".to_string();
         let mut src_port = "".to_string();

@@ -1,5 +1,6 @@
 use bytebuffer::ByteBuffer;
 use chrono::prelude::*;
+use log::{debug, error, info, warn};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 use std::{cmp::min, collections::HashMap, convert::TryInto, fs};
@@ -77,7 +78,7 @@ impl Buffer for ByteBuffer {
         }
 
         if length > self.bytes_available() {
-            println!("End of buffer was encountered.");
+            debug!("End of buffer was encountered.");
             return;
         }
 
@@ -109,7 +110,7 @@ impl Buffer for ByteBuffer {
                 return value.try_into().expect("read_var_int failed to try to i32");
             }
         }
-        println!("Too much data, {}", value);
+        error!("Too much data, {}", value);
         value
             .try_into()
             .expect("read_var_int failed to try to i32 - Too much data")
@@ -154,9 +155,7 @@ impl Buffer for ByteBuffer {
                     .expect("read_var_short failed to try to i16");
             }
         }
-        value
-            .try_into()
-            .expect("read_var_short failed to try to i16 - Too much data")
+        value.try_into().expect("read_var_short - Too much data")
     }
     fn read_var_uh_short(&mut self) -> u16 {
         self.read_var_short()
@@ -244,7 +243,7 @@ impl Buffer for ByteBuffer {
                 self.read_bytes(content_len)
             }),
             _ => {
-                println!("{} type is not implemented", t);
+                warn!("{} type is not implemented", t);
                 AtomicType::Boolean(false)
             }
         }
@@ -327,7 +326,7 @@ impl PacketDecoder {
         let mut ba = ByteBuffer::from_bytes(t);
         while ba.bytes_available() > 0 {
             if self.split_packet {
-                println!(
+                info!(
                     "We're split, at {} + {}, looking for {}",
                     self.sba.len(),
                     ba.bytes_available(),
@@ -356,13 +355,13 @@ impl PacketDecoder {
 
                     match message_object {
                         Ok(obj) => self.queue.push(obj),
-                        Err(err) => println!("{}", err),
+                        Err(err) => error!("{}", err),
                     }
 
                     let consumed = self.sba.get_rpos() - initial_pos;
 
                     if self.split_packet_length - consumed != 0 {
-                        println!("warning: forced to trim a packet !");
+                        warn!("warning: forced to trim a packet !");
                         ba.set_rpos(min(initial_pos + self.split_packet_length, self.sba.len()));
                     }
 
@@ -374,7 +373,7 @@ impl PacketDecoder {
                 }
             } else {
                 if ba.bytes_available() < 2 {
-                    println!("Empty packet");
+                    info!("Empty packet");
                     return;
                 }
 
@@ -393,7 +392,7 @@ impl PacketDecoder {
 
                 if let Some(_) = msg {
                 } else {
-                    println!(
+                    info!(
                         "Might be ETH trailer -> unknown id: {} - bytes available {}",
                         packet_id,
                         ba.bytes_available()
@@ -406,20 +405,20 @@ impl PacketDecoder {
                     length = 0;
                 } else if length_type == 1 {
                     if ba.bytes_available() < 1 {
-                        println!("Prevent overflow panic, should not append");
+                        warn!("Prevent overflow panic, should not append");
                         break;
                     }
                     length = ba.read_u8() as usize;
                 } else if length_type == 2 {
                     if ba.bytes_available() < 2 {
-                        println!("Prevent overflow panic, should not append");
+                        warn!("Prevent overflow panic, should not append");
                         break;
                     }
 
                     length = ba.read_u16() as usize;
                 } else if length_type == 3 {
                     if ba.bytes_available() < 3 {
-                        println!("Prevent overflow panic, should not append");
+                        warn!("Prevent overflow panic, should not append");
                         break;
                     }
 
@@ -430,7 +429,7 @@ impl PacketDecoder {
                         .expect("Error at length type 3");
                 }
 
-                println!(
+                info!(
                     "length {} | available {} | packetId {}",
                     length,
                     ba.bytes_available(),
@@ -448,35 +447,32 @@ impl PacketDecoder {
                     let initial_pos = ba.get_rpos();
 
                     // Parse the message
-                    if packet_id == 0 {
-                        ba.clear();
-                    } else {
-                        let message_object = PacketDecoder::parse_ba_to_object(
-                            &mut ba,
-                            packet_id,
-                            port,
-                            &self.msg_from_types,
-                            &self.types_from_id,
-                            &self.types,
-                        );
 
-                        match message_object {
-                            Ok(obj) => self.queue.push(obj),
-                            Err(err) => println!("{}", err),
-                        }
+                    let message_object = PacketDecoder::parse_ba_to_object(
+                        &mut ba,
+                        packet_id,
+                        port,
+                        &self.msg_from_types,
+                        &self.types_from_id,
+                        &self.types,
+                    );
 
-                        let consumed = ba.get_rpos() - initial_pos;
-
-                        if length as isize - consumed as isize != 0 {
-                            println!("warning: forced to trim a packet !");
-                            ba.set_rpos(min(initial_pos + length, ba.len()));
-                        }
-
-                        println!(
-                            "Ended to decode the packet, ba left: {}",
-                            ba.bytes_available()
-                        );
+                    match message_object {
+                        Ok(obj) => self.queue.push(obj),
+                        Err(err) => error!("{}", err),
                     }
+
+                    let consumed = ba.get_rpos() - initial_pos;
+
+                    if length as isize - consumed as isize != 0 {
+                        warn!("warning: forced to trim a packet !");
+                        ba.set_rpos(min(initial_pos + length, ba.len()));
+                    }
+
+                    info!(
+                        "Ended to decode the packet, ba left: {}",
+                        ba.bytes_available()
+                    );
                 }
             }
         }

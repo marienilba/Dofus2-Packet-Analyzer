@@ -3140,6 +3140,7 @@ dependencies = [
  "bytebuffer",
  "chrono",
  "dns-parser",
+ "log",
  "pcap",
  "pktparse",
  "serde",

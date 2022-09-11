@@ -23,6 +23,7 @@ tls-parser = "0.7"
 dns-parser = "0.8"
 chrono = "0.4.22"
 bytebuffer = "0.2.1"
+log = "0.4.17"
 
 [features]
 # by default Tauri runs in production mode

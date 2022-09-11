@@ -9,15 +9,19 @@
   let msgs: DofusPacket[] = [];
   let client = true;
   let server = true;
+  let playing = true;
 
   const handleClient = async () => {
     client = !client;
     msgs = msgs;
   };
+
   const handleServer = async () => {
     server = !server;
     msgs = msgs;
   };
+
+  const handlePlay = () => (playing = !playing);
 
   const filterMessages = (msgs: DofusPacket[]): DofusPacket[] => {
     return msgs.filter((m) => {
@@ -34,6 +38,8 @@
   }
 
   const unlisten = listen<string>("rs2js", (event) => {
+    if (!playing) return;
+
     let { data } = JSON.parse(event.payload) as {
       data: DofusPacket[];
     };
@@ -51,24 +57,15 @@
 
 <div class="flex flex-col min-w-screen h-screen p-2 gap-4">
   <div class="flex flex-row gap-2 items-center p-4">
-    <input
-      type="checkbox"
-      checked={client}
-      value="Client"
-      id="Client"
-      name="Client"
-      on:click={handleClient}
-    />
+    <input type="checkbox" checked={client} on:click={handleClient} />
     <label class="text-xl text-slate-100" for="Client">Client</label><br />
-    <input
-      type="checkbox"
-      checked={server}
-      value="Server"
-      id="Server"
-      name="Server"
-      on:click={handleServer}
-    />
+    <input type="checkbox" checked={server} on:click={handleServer} />
     <label class="text-xl text-slate-100" for="Server">Server</label><br />
+    <button
+      on:click={handlePlay}
+      class="px-2 py-1 bg-slate-400 rounded-full hover:opacity-75"
+      >{playing ? "🔴" : "🟦"}</button
+    >
   </div>
   <div class="flex flex-row p-2 gap-4 overflow-hidden h-full">
     <div
