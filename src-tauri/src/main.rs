@@ -64,7 +64,7 @@ fn main() {
                         // we remove the header from the data, slice at 54
                         let tcp_content = &packet.data[54..];
 
-                        decoder.decode_packet(&tcp_content, src_port.parse().unwrap_or_default());
+                        decoder.decode_packet(tcp_content, src_port.parse().unwrap_or_default());
                         let messages = decoder.get_messages();
                         let server_message = ServerMessage::new(messages);
 

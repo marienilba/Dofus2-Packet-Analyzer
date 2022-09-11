@@ -33,7 +33,7 @@ enum AtomicType {
     Short(i16),
     Int(i32),
     Boolean(bool),
-    UTF(String),
+    Utf(String),
     Double(f64),
     VarUhLong(u64),
     VarLong(u64),
@@ -69,10 +69,10 @@ trait Buffer {
 
 impl Buffer for ByteBuffer {
     fn bytes_available(&self) -> usize {
-        return self.len() - self.get_rpos();
+        self.len() - self.get_rpos()
     }
     fn swap_bytes(&mut self, bytes: &mut ByteBuffer, len: usize) {
-        let mut length = len.clone();
+        let mut length = len;
         if length == 0 {
             length = self.bytes_available();
         }
@@ -117,8 +117,6 @@ impl Buffer for ByteBuffer {
     }
     fn read_var_uh_int(&mut self) -> u32 {
         self.read_var_int()
-            .try_into()
-            .expect("read_var_uh_int failed to try to u32")
     }
     fn read_var_short(&mut self) -> i16 {
         const SHORT_MAX_VALUE: isize = 32767;
@@ -200,7 +198,7 @@ impl Buffer for ByteBuffer {
         }
         result.low |= b << i;
         result.high = b >> 4;
-        return result;
+        result
     }
     fn read(&mut self, t: &str) -> AtomicType {
         match t {
@@ -218,9 +216,9 @@ impl Buffer for ByteBuffer {
                 }
                 AtomicType::Boolean(true)
             }
-            "UTF" => AtomicType::UTF({
+            "UTF" => AtomicType::Utf({
                 let n_of_bytes = self.read_u16();
-                let v = self.read_bytes(n_of_bytes.clone().try_into().expect("Error in readUTF"));
+                let v = self.read_bytes(n_of_bytes.try_into().expect("Error in readUTF"));
                 std::str::from_utf8(&v)
                     .expect("Error in readUTF")
                     .to_string()
@@ -322,8 +320,7 @@ impl PacketDecoder {
     }
 
     pub fn decode_packet(&mut self, tcp_content: &[u8], port: u16) {
-        let t = tcp_content.clone();
-        let mut ba = ByteBuffer::from_bytes(t);
+        let mut ba = ByteBuffer::from_bytes(tcp_content);
         while ba.bytes_available() > 0 {
             if self.split_packet {
                 info!(
@@ -336,7 +333,7 @@ impl PacketDecoder {
                 if self.sba.len() + ba.bytes_available() < self.split_packet_length {
                     ba.swap_bytes(&mut self.sba, ba.bytes_available());
                 } else {
-                    let offset = self.sba.len().clone();
+                    let offset = self.sba.len();
                     ba.swap_bytes(&mut self.sba, self.split_packet_length - offset);
 
                     self.sba.set_rpos(0);
@@ -390,7 +387,7 @@ impl PacketDecoder {
 
                 let msg = self.msg_from_types.get(&packet_id.to_string());
 
-                if let Some(_) = msg {
+                if msg.is_some() {
                 } else {
                     info!(
                         "Might be ETH trailer -> unknown id: {} - bytes available {}",
@@ -536,7 +533,7 @@ impl PacketDecoder {
         let mut result: Map<String, Value> = Map::new();
         let msg_spec = types_from_name
             .get(type_name)
-            .expect(format!("msg_spec missing ! typeName: {}", type_name).as_str())
+            .unwrap_or_else(|| panic!("msg_spec missing ! typeName: {}", type_name))
             .as_object()
             .unwrap();
 
@@ -555,7 +552,7 @@ impl PacketDecoder {
 
         if let Some(bool_vars) = msg_spec.get("boolVars") {
             if let Some(bool_vars_arr) = bool_vars.as_array() {
-                if bool_vars_arr.len() > 0 {
+                if bool_vars_arr.is_empty() {
                     let mut j = 0;
 
                     loop {
@@ -579,10 +576,10 @@ impl PacketDecoder {
 
                             result.insert((&bool_name).to_string(), Value::Bool(res));
 
-                            i = i + 1;
+                            i += 1;
                         }
 
-                        j = j + 8;
+                        j += 8;
                         if j >= bool_vars_arr.len() {
                             break;
                         }
@@ -600,10 +597,8 @@ impl PacketDecoder {
                     let var_type = var.get("type").unwrap().as_str().unwrap();
                     let optional = var.get("optional").unwrap().as_bool().unwrap();
 
-                    if optional == true {
-                        if ba.read_i8() != 0 {
-                            return result;
-                        }
+                    if optional && ba.read_i8() != 0 {
+                        return result;
                     }
 
                     if PRIMITIVES.contains(&var_type) {
@@ -754,15 +749,14 @@ impl PacketDecoder {
             }
             _ => {
                 let atomic = ba.read(var_type);
-                let json_value = atomic_to_serde_value(&atomic);
-                json_value
+                atomic_to_serde_value(&atomic)
             }
         }
     }
 }
 
-fn get_atomic_length(ba: &mut ByteBuffer, length: &String) -> Option<u16> {
-    let ba_len = ba.read(&length);
+fn get_atomic_length(ba: &mut ByteBuffer, length: &str) -> Option<u16> {
+    let ba_len = ba.read(length);
     let atomic_length = match ba_len {
         AtomicType::UnsignedByte(v) => v.to_string(),
         AtomicType::Byte(v) => v.to_string(),
@@ -781,23 +775,21 @@ fn get_atomic_length(ba: &mut ByteBuffer, length: &String) -> Option<u16> {
         _ => String::from(""),
     };
 
-    let atomic_res = match atomic_length.parse::<u16>() {
+    match atomic_length.parse::<u16>() {
         Ok(size) => Some(size),
         Err(_) => None,
-    };
-
-    atomic_res
+    }
 }
 
 fn atomic_to_serde_value(atomic: &AtomicType) -> Value {
-    let res = match atomic {
+    match atomic {
         AtomicType::Boolean(v) => json!(v),
         AtomicType::UnsignedByte(v) => json!(v),
         AtomicType::Byte(v) => json!(v),
         AtomicType::UnsignedShort(v) => json!(v),
         AtomicType::Short(v) => json!(v),
         AtomicType::Int(v) => json!(v),
-        AtomicType::UTF(v) => json!(v),
+        AtomicType::Utf(v) => json!(v),
         AtomicType::Double(v) => json!(v),
         AtomicType::VarUhLong(v) => json!(v),
         AtomicType::VarLong(v) => json!(v),
@@ -808,8 +800,7 @@ fn atomic_to_serde_value(atomic: &AtomicType) -> Value {
         AtomicType::Float(v) => json!(v),
         AtomicType::UnsignedInt(v) => json!(v),
         AtomicType::ByteArray(v) => json!(v),
-    };
-    res
+    }
 }
 
 fn get_flag_boolean_byte(a: &i16, pos: usize) -> bool {

@@ -27,7 +27,7 @@ impl PacketCapture {
             Ok(parsed) => parsed,
         };
 
-        return parsed_packet;
+        parsed_packet
     }
 
     pub fn get_packet_meta(
